@@ -1,0 +1,7 @@
+[0m[[0m[31merror[0m] [0m[0m/home/sguillou/Desktop/ScalaProject/minihol/ProofKernelSimple/src/main/scala/Main.scala:45:56: illegal start of simple expression[0m
+[0m[[0m[31merror[0m] [0m[0m    val (thm2, thm3) = DEFINE_TYPE( Single, BooleanOp, , BotS, StBo )[0m
+[0m[[0m[31merror[0m] [0m[0m                                                       ^[0m
+[0m[[0m[31merror[0m] [0m[0m/home/sguillou/Desktop/ScalaProject/minihol/ProofKernelSimple/src/main/scala/Main.scala:73:3: ')' expected but '}' found.[0m
+[0m[[0m[31merror[0m] [0m[0m  }[0m
+[0m[[0m[31merror[0m] [0m[0m  ^[0m
+[0m[[0m[31merror[0m] [0m[0mtwo errors found[0m

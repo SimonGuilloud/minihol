@@ -22,7 +22,7 @@ object Helper {
       case Variable(name, variable_type) => if (t == a) b else if (t == b) a else t
       case Abstraction(x, t) => Abstraction(if (x == a) b else if (x == b) a else x, swap(t, a, b))
       case Application(f, t) =>Application(swap(f, a, b), swap(t, a, b))
-      case Constant(name, constant_type) => t
+      case Constant(name, constant_type, _) => t
     }
   }
 
@@ -34,7 +34,7 @@ object Helper {
         val z = Variable(newVariable((s.occuringVariables ++ t.occuringVariables :+ a :+ b).unique, "$z"), a.typ)
         areAlphaEquivalent(swap(s, a, z), swap(t, b, z))
       }
-      case (Constant(_, _), Constant(_, _)) => t1 == t2
+      case (Constant(_, _, _), Constant(_, _, _)) => t1 == t2
       case (_, _) => false
     }
   }

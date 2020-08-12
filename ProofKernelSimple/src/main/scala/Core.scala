@@ -7,15 +7,6 @@ import stainless.proof._
 
 
 
-
-
-
-
-
-
-
-
-
 object Core {
   //Useful lemmas
   def filterEmpty[T]( @induct maList: List[T], p: T=>Boolean) : Unit ={
@@ -39,7 +30,7 @@ object Core {
           assert((f.typ.isWellConstructed && t.typ.isWellConstructed) ==> te.typ.isWellConstructed)
           check(te.isWellConstructed ==> te.typ.isWellConstructed)
         }
-        case Constant(name, constant_type) => check(te.isWellConstructed ==> constant_type.isWellConstructed)
+        case Constant(name, constant_type, param_types) => check(te.isWellConstructed ==> constant_type.isWellConstructed)
       }
   }.ensuring(te.isWellConstructed ==> te.typ.isWellConstructed)
 
@@ -61,6 +52,7 @@ object Core {
       case Ind => true
       case Func(input_type, output_type) => input_type.isWellConstructed && output_type.isWellConstructed && output_type != Unit
       case TypeVariable(name) => true
+      case CustomType(name) => true
     }
     def in: HOL_type = this match {
       case Unit => this
@@ -68,6 +60,7 @@ object Core {
       case Ind => Unit
       case Func(in, out) => in
       case TypeVariable(name) => Unit
+      case CustomType(name) => Unit
     }
     def out: HOL_type = {
       this match {
@@ -76,6 +69,7 @@ object Core {
         case Ind => this
         case Func(in, out) => out
         case TypeVariable(name) => this
+        case CustomType(name) => this
       }
     }.ensuring(this == Unit || _ != Unit)
     def type_substituteType(alpha1: HOL_type, tau1: HOL_type): HOL_type = {
@@ -87,6 +81,7 @@ object Core {
         case Func(input_type, output_type) =>
           Func(input_type.type_substituteType(alpha1, tau1), output_type.type_substituteType(alpha1, tau1))
         case TypeVariable(name) => if (this == alpha1) tau1 else this
+        case CustomType(name) => this
       }
     }.ensuring(_.isWellConstructed)
     def freeTypeVariables: List[TypeVariable] = this match {
@@ -95,6 +90,7 @@ object Core {
       case Ind => List.empty
       case Func(input_type, output_type) => (input_type.freeTypeVariables ++ output_type.freeTypeVariables).unique
       case TypeVariable(name) => List(TypeVariable(name))
+      case CustomType(name) => List.empty
     }
   }
   case object Unit extends HOL_type
@@ -102,6 +98,7 @@ object Core {
   case object Ind extends HOL_type
   case class Func(input_type: HOL_type, output_type: HOL_type) extends HOL_type
   case class TypeVariable(name: String) extends HOL_type
+  case class CustomType(name:String) extends HOL_type
 
   @inlineInvariant
   sealed abstract class Term {
@@ -109,7 +106,7 @@ object Core {
       case Variable(name, variable_type) => variable_type.isWellConstructed && variable_type != Unit
       case Abstraction(x, t) => x.variable_type.isWellConstructed && t.isWellConstructed
       case Application(f, t) => f.isWellConstructed && t.isWellConstructed && f.typ.in == t.typ
-      case Constant(name, constant_type) => constant_type.isWellConstructed && constant_type != Unit &&
+      case Constant(name, constant_type, param_types) => constant_type.isWellConstructed && constant_type != Unit &&
         ((name == "=") ==> (constant_type match {
           case Func(lt, Func(rt, Bool)) => lt == rt
           case _ => false
@@ -120,7 +117,7 @@ object Core {
         case Variable(name, variable_type) => BigInt(1)
         case Abstraction(x, t) => t.height + BigInt(1)
         case Application(f, t) => f.height + t.height
-        case Constant(name, constant_type) => BigInt(1)
+        case Constant(name, constant_type, param_types) => BigInt(1)
       }
     } .ensuring(_ >= BigInt(1))
     def typ: HOL_type = {
@@ -128,27 +125,27 @@ object Core {
         case Variable(name, variable_type) => variable_type
         case Abstraction(x, t) => Func(x.variable_type, t.typ)
         case Application(f, t) => f.typ.out
-        case Constant(name, constant_type) => constant_type
+        case Constant(name, constant_type, param_types) => constant_type
       }
     }.ensuring(r => r != Unit)
     def freeVariables: List[Variable] = this match {
       case Variable(name, variable_type) => List(Variable(name, variable_type))
       case Abstraction(x, t) => t.freeVariables - x
       case Application(f, t) => (f.freeVariables ++ t.freeVariables).unique
-      case Constant(name, constant_type) => List.empty
+      case Constant(name, constant_type, param_types) => List.empty
     }
     def hasFreeVariables: Boolean = !this.freeVariables.isEmpty
     def occuringVariables: List[Variable] = this match {
       case Variable(name, variable_type) => List(Variable(name, variable_type))
       case Abstraction(x, t) => (t.occuringVariables:+ x).unique
       case Application(f, t) => (f.occuringVariables ++ t.occuringVariables).unique
-      case Constant(name, constant_type) => List.empty
+      case Constant(name, constant_type, param_types) => List.empty
     }
     def bindingVariables: List[Variable] = this match {
       case Variable(name, variable_type) => List.empty
       case Abstraction(x, t) => List(x)
       case Application(f, t) => (f.bindingVariables ++ t.bindingVariables).unique
-      case Constant(name, constant_type) => List.empty
+      case Constant(name, constant_type, param_types) => List.empty
     }
     def substitutionPossible(x1: Variable, t1: Term): Boolean = {
       require(this.isWellConstructed)
@@ -170,7 +167,7 @@ object Core {
             assert(f.height < this.height && t.height < this.height)
             f.substitutionPossible(x1, t1) && t.substitutionPossible(x1, t1)
           }
-          case Constant(name, constant_type) => true
+          case Constant(name, constant_type, param_types) => true
         }
       })
     }
@@ -192,8 +189,10 @@ object Core {
         case Application(f, t) =>
           assert(f.height < this.height)
           assert(t.height < this.height)
+          assert(f.substitutionPossible(x1, t1))
+          assert(t.substitutionPossible(x1, t1))
           Application(f.substitute(x1, t1), t.substitute(x1, t1))
-        case Constant(name, constant_type) => this
+        case Constant(name, constant_type, param_types) => this
       }
     }.ensuring( r =>  (t1.isInstanceOf[Variable] ==> (r.height == this.height)) && (r.typ == this.typ))
     def substituteType(alpha1: TypeVariable, tau1: HOL_type): Term = {
@@ -236,7 +235,7 @@ object Core {
           val r = Application(f.substituteType(alpha1, tau1), t.substituteType(alpha1, tau1))
           check(r.isWellConstructed) //hard
           r
-        case Constant(name, constant_type) =>
+        case Constant(name, constant_type, param_types) =>
           val p = name == "=" ==> (constant_type match {
             case Func(rt, Func(lt, Bool)) => (rt == lt) && (rt.type_substituteType(alpha1, tau1) == lt.type_substituteType(alpha1, tau1))
             case _ => false})
@@ -256,14 +255,14 @@ object Core {
                 case Func(rt, Func(lt, Bool)) =>
                   assert(ltt == rtt)
                   assert(tri)
-                  val r = Constant(name, ctt)
+                  val r = Constant(name, ctt, param_types-alpha1)
                   check(r.isWellConstructed) //hard
                   r
               }
             }
           }
           else{
-            val r = Constant(name, ctt)
+            val r = Constant(name, ctt, param_types-alpha1)
             check(r.isWellConstructed)
             r
           }
@@ -273,30 +272,23 @@ object Core {
       case Variable(name, variable_type) => variable_type.freeTypeVariables
       case Abstraction(x, t) => (x.freeTypeVariables ++ t.freeTypeVariables).unique
       case Application(f, t) => (f.freeTypeVariables ++ t.freeTypeVariables).unique
-      case Constant(name, constant_type) => constant_type.freeTypeVariables
+      case Constant(name, constant_type, param_types) => (constant_type.freeTypeVariables ++ param_types).unique
     }
  }
   case class Variable(name: String, variable_type: HOL_type) extends Term
   case class Abstraction(x: Variable, t: Term) extends Term
   case class Application(f: Term, t: Term) extends Term
-  case class Constant(name: String, constant_type: HOL_type) extends Term
+  case class Constant(name: String, constant_type: HOL_type, param_types: List[TypeVariable]) extends Term
 
 
-   case class ConstantDefinition(c: Constant, t: Term) {
-     def isWellConstructed = t.isWellConstructed && c.isWellConstructed
-     def substituteType2(alpha1: TypeVariable, tau1: HOL_type): ConstantDefinition = {
-       require(tau1 != Unit && this.isWellConstructed && alpha1.isWellConstructed && tau1.isWellConstructed)
-       val nc = c.substituteType(alpha1, tau1)
-       assert(nc.isInstanceOf[Constant])
-       ConstantDefinition(nc.asInstanceOf[Constant], t.substituteType(alpha1, tau1))
-     }
-     def conflicts(that: ConstantDefinition): Boolean = this.c.name == that.c.name && this.t != that.t
-   }
+
+
    //define primitive constant equality.
    //It has no definition, only properties which are defined by primitives rules
    //To make sure the user can't "define" equality, we force the definition  that "equal" == "equal"
    private val A = TypeVariable("A")
-   val equal: Constant = Constant("=", Func(A, Func(A, Bool)))
+   val equal: Constant = Constant("=", Func(A, Func(A, Bool)), List(A))
+
    def safe_equal(l:Term, r:Term): Term = {
      require(l.isWellConstructed && r.isWellConstructed && l.typ == r.typ)
      termOKimpliesTypeOK(l)

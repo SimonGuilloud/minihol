@@ -21,7 +21,7 @@ object Deduction {
   //  |- f(x) = f(y)
   def AP_FUNC(f: Term, thm: Theorem): Theorem = {
     thm.f match {
-      case App(App(Constant("=", _), x), y)  => {
+      case App(App(Constant("=", _, _), x), y)  => {
         if (f.typ.in == x.typ)
           MK_COMB(REFL(f), thm)
         else
@@ -34,7 +34,7 @@ object Deduction {
   //  |- f(x) = g(x)
   def AP_ARG(thm: Theorem, x: Term): Theorem = {
     thm.f match {
-      case App(App(Constant("=", _), f), g)  => {
+      case App(App(Constant("=", _, _), f), g)  => {
         if (f.typ.in == x.typ)
           MK_COMB(thm, REFL(x))
         else
@@ -48,8 +48,8 @@ object Deduction {
   //  |- y=x
   def SYM(thm: Theorem): Theorem ={
     thm.f match {
-      case App(App(Constant("=", t), x), y)  => {
-        _EQ_MP(AP_ARG(AP_FUNC(Constant("=", t), thm), x), REFL(x))
+      case App(App(Constant("=", t, param_types), x), y)  => {
+        _EQ_MP(AP_ARG(AP_FUNC(Constant("=", t, param_types), thm), x), REFL(x))
       }
       case _ => throw new IllegalArgumentException("AP_ARG: The theorem must be of the form f = g")
     }
@@ -57,7 +57,7 @@ object Deduction {
 
   def _AGNOSTIC_TRANS(first: Theorem, second: Theorem):Theorem = {
     (first.f, second.f) match {
-      case (Application(Application(Constant("=", _), s), t), Application(Application(Constant("=", _), u), v)) =>
+      case (Application(Application(Constant("=", _, _), s), t), Application(Application(Constant("=", _, _), u), v)) =>
         if (t == u) _TRANS(first, second)
         else if (t == v) _TRANS(first, SYM(second))
         else if (s == u) _TRANS(SYM(first), second)
@@ -96,7 +96,7 @@ object Deduction {
         }
         else ABS(_ALPHA_CONV_REC(tInner, x1, y1), x)
       case Application(f, arg) => MK_COMB(_ALPHA_CONV_REC(f, x1, y1), _ALPHA_CONV_REC(arg, x1, y1))
-      case Constant(name, constant_type) => REFL(t)
+      case Constant(name, constant_type, _) => REFL(t)
     }
   }
 
@@ -113,7 +113,7 @@ object Deduction {
         val thm4 = _TRANS(thm1, thm3) // \a. s/ == \z. t[z/b]/
         _TRANS(thm4, SYM(thm2))
       case (App(f1, arg1), App(f2, arg2)) => MK_COMB(ALPHA_EQUIVALENCE(f1, f2), ALPHA_EQUIVALENCE(arg1, arg2))
-      case (Constant(n1, v1), Constant(n2, v2)) =>REFL(t1)
+      case (Constant(n1, v1, _), Constant(n2, v2, _)) =>REFL(t1)
     }
   }
 
@@ -122,11 +122,11 @@ object Deduction {
   def TRANS(first: Theorem, second: Theorem): Theorem = {
     require(
       ((first.f, second.f) match {
-        case (Application(Application(Constant("=", _), s), t), Application(Application(Constant("=", _), u), v)) => areAlphaEquivalent(t, u)
+        case (Application(Application(Constant("=", _, _), s), t), Application(Application(Constant("=", _, _), u), v)) => areAlphaEquivalent(t, u)
         case _ => false
-      }) && areCompatible(first.env, second.env))
+      }) && areCompatibleCons(first.cEnv, second.cEnv) && areCompatibleTypes(first.tEnv, second.tEnv))
     (first.f, second.f) match { //safe_equal precondition
-      case (Application(Application(Constant("=", ct1), s), t), Application(Application(Constant("=", ct2), u), v)) =>
+      case (Application(Application(Constant("=", ct1, _), s), t), Application(Application(Constant("=", ct2, _), u), v)) =>
         val eq_t_u = ALPHA_EQUIVALENCE(t, u)
         val eq_s_u = _TRANS(first, eq_t_u)
         val eq_s_v = _TRANS(eq_s_u, second)
@@ -137,12 +137,12 @@ object Deduction {
   def EQ_MP(eq:Theorem, p: Theorem): Theorem ={
     require(
       (eq.f match {
-        case Application(Application(Constant("=", _), l), r) => areAlphaEquivalent(l, p.f)
+        case Application(Application(Constant("=", _, _), l), r) => areAlphaEquivalent(l, p.f)
         case _ => false
-      }) && areCompatible(eq.env, p.env)
+      }) && areCompatibleCons(eq.cEnv, p.cEnv) && areCompatibleTypes(eq.tEnv, p.tEnv)
     )
     eq.f match {
-      case Application(Application(Constant("=", _), l), r) =>
+      case Application(Application(Constant("=", _, _), l), r) =>
         val eq2 = _TRANS(ALPHA_EQUIVALENCE(p.f, l), eq)
         _EQ_MP(eq2, p)
     }
@@ -150,17 +150,17 @@ object Deduction {
 
 
   def BETA_CONV(t1:Term) : Theorem = {
+    require(t1.isWellConstructed)
     t1 match {
       case App(\(x, t), n) => { // BETA(x, t) = \x t/(x) == t
         val binding = t.bindingVariables
         val fre = n.freeVariables
-        val problematicBinders = binding.filter(fre.contains(_))
+        val problematicBinders = binding.filter(fre.contains)
         if (problematicBinders.isEmpty){
-          require(n.freeVariables.forall(!t.bindingVariables.contains(_)))
+          require(x.typ == n.typ)
           _INST(BETA(x, t), x, n)  // INST(\x t/(x) == t, x, n)  =   \x. t/(n) == t[n/x]   iff n has no free variables bound in t, and dos not contain x.
         }
         else{
-          println("bonjour")
           val tPrime = removeProblematicVariables(n.freeVariables, problematicBinders, t)
           val thmTTPrime = AP_ARG(ABS(ALPHA_EQUIVALENCE(t, tPrime), x), n)  //  \x.t/(n) == \x.tPrime/(n)
           _TRANS(thmTTPrime, _INST(BETA(x, tPrime), x, n)) // \x.t/(n) == \x. tPrime/(n) == tPrime[n/x]

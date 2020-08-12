@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="stainless-scalac_2.12-0.7.1-244-g2372c03">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/../../stainless-git/stainless/frontends/scalac/target/scala-2.12/stainless-scalac_2.12-0.7.1-244-g2372c03.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

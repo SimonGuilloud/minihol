@@ -4,6 +4,7 @@ import PrettyPrinter._
 import Sugar._
 import Helper._
 import Deduction._
+import stainless.collection._
 
 object BasicConstants {
 
@@ -15,32 +16,36 @@ object BasicConstants {
   private val yA = Variable("y", A)
   private val r = Variable("r", Bool)
   private val s = Variable("s", Bool)
+  private val q = Variable("q", Bool)
   private val ff = Variable("f", BooleanOp)
   private val PA = Variable("P", Func(A, Bool))
 
   //val === = safe_equal(_,_)
-  val <=> = equal.substituteType(A, Bool)
+  val <=> : Term = Constant("=", BooleanOp, Nil())
 
-  val top = Constant("T", Bool)
-  val top_def = DEFINE_CONSTANT(top, \(x, x) === \(x, x))
+  val top: Constant = Constant("T", Bool, Nil())
+  val top_def: Theorem = DEFINE_CONSTANT(top, \(x, x) === \(x, x))
 
-  val /\ = Constant("/\\", BooleanOp)
-  val and_def = DEFINE_CONSTANT(/\, \(r, \(s, \(ff, ff(r)(s)) === \(ff, ff(top)(top)) )) )
+  val /\ : Constant = Constant("/\\", BooleanOp, Nil())
+  val and_def: Theorem = DEFINE_CONSTANT(/\, \(r, \(s, \(ff, ff(r)(s)) === \(ff, ff(top)(top)) )) )
 
-  val ==> = Constant("->", BooleanOp)
-  val implies_def = DEFINE_CONSTANT(==>, \(r, \(s, /\(r)(s) <=> r )) )
+  val ==> : Constant = Constant("->", BooleanOp, Nil())
+  val implies_def: Theorem = DEFINE_CONSTANT(==>, \(r, \(s, /\(r)(s) <=> r )) )
 
-  val \-/ = Constant("\\-/", (A->Bool)-> Bool)
-  val forall_def = DEFINE_CONSTANT(\-/, \(PA, PA === \(xA, top)) )
+  val \-/ : Constant = Constant("\\-/", (A->Bool)-> Bool, Nil())
+  val forall_def: Theorem = DEFINE_CONSTANT(\-/, \(PA, PA === \(xA, top)) )
 
-  val \/ = Constant("\\/", BooleanOp)
-  val or_def = DEFINE_CONSTANT(\/, \(r, \(s, \-/(x, ( r ==> x ) ==> (( s ==> x ) ==> x ) ) )) )
+  val \/ : Constant = Constant("\\/", BooleanOp, Nil())
+  val or_def: Theorem = DEFINE_CONSTANT(\/, \(r, \(s, \-/(x, ( r ==> x ) ==> (( s ==> x ) ==> x ) ) )) )
 
-  val bot = Constant("L", Bool)
-  val bot_def = DEFINE_CONSTANT(bot, \-/(r, r))
+  val bot: Constant = Constant("L", Bool, Nil())
+  val bot_def: Theorem = DEFINE_CONSTANT(bot, \-/(r, r))
 
-  val ~ = Constant("~", Bool->Bool)
-  val not_def = DEFINE_CONSTANT(~, \(r,r ==> bot))
+  val not : Constant = Constant("~", Bool->Bool, Nil())
+  val not_def: Theorem = DEFINE_CONSTANT(not, \(r,r ==> bot))
+
+  val ? : Constant = Constant("E", (A->Bool)-> Bool, Nil())
+  val exists_def: Theorem = DEFINE_CONSTANT(?, \(PA, \-/(q, \-/(xA, PA(xA) ==> q) ==>q)) )
 
 
   //Refining Boolean constants definition
@@ -111,8 +116,8 @@ object BasicConstants {
 
   def TRUTH_ELIM(thm: Theorem): Theorem = {
     thm.f match{
-      case App(App(Constant("=", eqt), l), `top`) => EQ_MP(SYM(thm), TRUTH)
-      case App(App(Constant("=", eqt), `top`), r) => EQ_MP(thm, TRUTH)
+      case App(App(Constant("=", eqt, param_types), l), `top`) => EQ_MP(SYM(thm), TRUTH)
+      case App(App(Constant("=", eqt, param_types), `top`), r) => EQ_MP(thm, TRUTH)
       case _ => throw new IllegalArgumentException("thm mut be an equality between a term and T")
     }
   }
@@ -129,7 +134,7 @@ object BasicConstants {
   }
 
   def CONJ_PICK_1(thm:Theorem):Theorem = thm.f match {
-    case App(App(/\, l), r) => {
+    case App(App(/\, l), r) =>
       val thm1 = EQ_MP(AND_THM(l, r), thm)
       val x = Variable(newVariable(freeVarThm(thm), "$x"), Bool)
       val y = Variable(newVariable(freeVarThm(thm), "$y"), Bool)
@@ -143,10 +148,10 @@ object BasicConstants {
       print(thm7)
       val thm8 = TRANS(thm7, BETA_CONV( \(y, top)(top)  ))  //  l == \y. T/ == T
       thm8
-    }
+    case _ => throw new IllegalArgumentException("Theorem must be of the form p /\\ q")
   }
   def CONJ_PICK_2(thm:Theorem):Theorem = thm.f match {
-    case App(App(/\, l), r) => {
+    case App(App(/\, l), r) =>
       val thm1 = EQ_MP(AND_THM(l, r), thm)
       val x = Variable(newVariable(freeVarThm(thm), "$x"), Bool)
       val y = Variable(newVariable(freeVarThm(thm), "$y"), Bool)
@@ -160,7 +165,41 @@ object BasicConstants {
       print(thm7)
       val thm8 = TRANS(thm7, BETA_CONV( \(y, y)(top)  ))  //  l == \y. T/ == T
       thm8
+    case _ => throw new IllegalArgumentException("Theorem must be of the form p /\\ q")
+  }
+
+  def SPEC(thm: Theorem, u: Variable): Theorem = {
+    thm.f match {
+      case App(Constant("\\-/", ct, param_types), Abstraction(x, t)) =>
+        require(x.typ == u.typ, "Types of variables don't match")
+        val thm1 = AP_ARG(INST_TYPE(forall_def, A, x.typ), \(x, t)) // |- \-/x. t = \P. P = \x. T//(\x. t)
+        val thm2 = EQ_MP(thm1, thm)
+        val pA = Variable("P", Func(x.typ, Bool))
+        val thm3 = EQ_MP(BETA_CONV( \( pA, pA === \(x, top) )(\(x, t)) ),thm2 )
+        val thm4 = AP_ARG(thm3, x)
+        val thm5 = TRANS(SYM(BETA_CONV(\(x, t)(x))), thm4)
+        val thm6 = TRANS(thm5, BETA_CONV(\(x, top)(x)))
+        TRUTH_ELIM(_INST(thm6, x, u))
+      case _ => print(thm.f);throw new IllegalArgumentException("Theorem must be of the form \\-/(x, t)")
     }
   }
+
+  def GEN(thm:Theorem, x:Variable): Theorem = {
+    val thm1 = AP_ARG(INST_TYPE(forall_def, A, x.typ), \(x, thm.f))
+    val pA = Variable("P", Func(x.typ, Bool))
+    val thm2 = TRANS(thm1, BETA_CONV( \( pA, pA === \(x, top) )(\(x, thm.f)) ) ) // |- \-/x. t = \x. t/= \x. T/
+    val thm3 = ABS(TRUTH_INTRO(thm), x)
+    EQ_MP(SYM(thm2), thm3)
+  }
+
+
+
+  //Hilbert Operator
+  val eps: Constant = Constant("eps", (A->Bool)->A, List(A))
+  private val choice = \-/(xA, PA(xA) ==> PA(eps(PA)) )
+
+  val CHOICE: Theorem = ASSUME(choice)
+
+
 
 }

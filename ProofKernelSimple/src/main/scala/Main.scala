@@ -16,6 +16,9 @@ object Main {
     val x3 = Variable("x3", Bool)
     val y = Variable("y", Bool)
     val z = Variable("z", Bool)
+    val m = Variable("m", Ind)
+    val n = Variable("n", Ind)
+    val u = Variable("u", Ind)
     val A = TypeVariable("A")
     val xA = Variable("x", A)
     val l = Variable("lq", Bool)
@@ -26,13 +29,24 @@ object Main {
     val PA = Variable("P", Func(A, Bool))
 
 
-    val t1: Term = \(x, \(ff, ff(\(y, y)(x) )(r) ))
+    val t1: Term = \-/(n, n === m)
     val t2: Term = \(y, \(gg, gg(\(y, y)(y) )(r) ))
 
-    val thm1:Theorem = ASSUME(l)
-    val thm2: Theorem = ASSUME(r)
-    val thm4 = CONJ_PICK_2(CONJ(thm1, thm2))
-    print(thm4)
+    val thm1:Theorem = and_def
+    val Single = CustomType("Single")
+    val BotS = Constant("BtS", BooleanOp->Single, Nil())
+    val StBo = Constant("StB", Single->BooleanOp, Nil())
+    val bo = Variable("bo", BooleanOp)
+    val t = \(bo, \-/(x, bo(x)(x) ))(<=>)
+    print(GEN(REFL(x), x))
+    val th1 = SYM( ASSUME(\(bo, \-/(x, bo(x)(x) ))(<=>) === \-/(x, <=>(x)(x))) )
+    val th = EQ_MP(th1, GEN(REFL(x), x))
+    print(th)
+    val (thm2, thm3) = DEFINE_TYPE( Single, BooleanOp, th , BotS, StBo )
+    print(thm2)
+    print(thm3)
+
+
 
 
     /*

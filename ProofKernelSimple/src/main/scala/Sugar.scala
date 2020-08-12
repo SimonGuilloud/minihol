@@ -1,6 +1,7 @@
 import Core._
 import Theorems._
 import PrettyPrinter._
+import BasicConstants._
 object Sugar {
 
 
@@ -15,7 +16,7 @@ object Sugar {
 
     def /\(r: Term): Term = BasicConstants./\(t)(r)
     def ==>(r: Term): Term = BasicConstants.==>(t)(r)
-    def \/(r: Term): Term = BasicConstants./\(t)(r)
+    def \/(r: Term): Term = BasicConstants.\/(t)(r)
   }
 
   implicit class Binder(c:Constant){
