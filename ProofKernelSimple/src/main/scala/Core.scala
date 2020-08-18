@@ -11,8 +11,6 @@ object Core {
   //Useful lemmas
   def filterEmpty[T]( @induct maList: List[T], p: T=>Boolean) : Unit ={
   }.ensuring(_ => maList.filter(p).isEmpty == !maList.exists(p))
-  def forallUnion[T](@induct l1: List[T], l2: List[T], p: T => Boolean): Unit ={
-  }.ensuring((l1.forall(p) && l2.forall(p)) ==> (l1++l2).forall(p))
 
   def termOKimpliesTypeOK(te: Term): Unit ={te match {
         case Variable(name, variable_type) => check(te.isWellConstructed ==> variable_type.isWellConstructed)
@@ -148,28 +146,29 @@ object Core {
       case Constant(name, constant_type, param_types) => List.empty
     }
     def substitutionPossible(x1: Variable, t1: Term): Boolean = {
-      require(this.isWellConstructed)
       decreases(this.height)
-      val t1fv = t1.freeVariables
-      (x1.typ == t1.typ) && (!t1fv.contains(x1) || {
-        this match {
-          case Variable(name, variable_type) => true
-          case Abstraction(y, t) =>
-            if (y == x1) true
-            else if (t1fv.contains(y) && !t.freeVariables.contains(x1)) true //actually useless line because the call on the next line will return this if the conditions are satisfied
-            else if (!t1fv.contains(y)){
-              assert(t.height<this.height)
-              t.substitutionPossible(x1, t1)
+      this.isWellConstructed && {
+        val t1fv = t1.freeVariables
+        (x1.typ == t1.typ) && (!t1fv.contains(x1) || {
+          this match {
+            case Variable(name, variable_type) => true
+            case Abstraction(y, t) =>
+              if (y == x1) true
+              else if (t1fv.contains(y) && !t.freeVariables.contains(x1)) true //actually useless line because the call on the next line will return this if the conditions are satisfied
+              else if (!t1fv.contains(y)){
+                assert(t.height<this.height)
+                t.substitutionPossible(x1, t1)
+              }
+              else false
+            case Application(f, t) => {
+              assert(this.height == f.height + t.height)
+              assert(f.height < this.height && t.height < this.height)
+              f.substitutionPossible(x1, t1) && t.substitutionPossible(x1, t1)
             }
-            else false
-          case Application(f, t) => {
-            assert(this.height == f.height + t.height)
-            assert(f.height < this.height && t.height < this.height)
-            f.substitutionPossible(x1, t1) && t.substitutionPossible(x1, t1)
+            case Constant(name, constant_type, param_types) => true
           }
-          case Constant(name, constant_type, param_types) => true
-        }
-      })
+        })
+      }
     }
 
     def substitute(x1: Variable, t1: Term): Term = {
@@ -194,7 +193,7 @@ object Core {
           Application(f.substitute(x1, t1), t.substitute(x1, t1))
         case Constant(name, constant_type, param_types) => this
       }
-    }.ensuring( r =>  (t1.isInstanceOf[Variable] ==> (r.height == this.height)) && (r.typ == this.typ))
+    }.ensuring( r => r.isWellConstructed && (t1.isInstanceOf[Variable] ==> (r.height == this.height)) && (r.typ == this.typ))
     def substituteType(alpha1: TypeVariable, tau1: HOL_type): Term = {
       require(this.isWellConstructed && alpha1.isWellConstructed && tau1.isWellConstructed && tau1 != Unit)
       decreases(this.height)
